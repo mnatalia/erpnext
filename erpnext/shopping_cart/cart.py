@@ -6,7 +6,7 @@ import frappe
 from frappe import throw, _
 import frappe.defaults
 from frappe.utils import cint, flt, get_fullname, cstr
-from frappe.geo.doctype.address.address import get_address_display
+from frappe.contacts.doctype.address.address import get_address_display
 from erpnext.shopping_cart.doctype.shopping_cart_settings.shopping_cart_settings import get_shopping_cart_settings
 from frappe.utils.nestedset import get_root_of
 from erpnext.accounts.utils import get_account_name
@@ -31,10 +31,14 @@ def get_cart_quotation(doc=None):
 		doc = quotation
 		set_cart_count(quotation)
 
+	addresses = get_address_docs(party=party)
+
 	return {
 		"doc": decorate_quotation_doc(doc),
-		"addresses": [{"name": address.name, "display": address.display}
-			for address in get_address_docs(party=party)],
+		"shipping_addresses": [{"name": address.name, "display": address.display}
+			for address in addresses if address.address_type == "Shipping"],
+		"billing_addresses": [{"name": address.name, "display": address.display}
+			for address in addresses if address.address_type == "Billing"],
 		"shipping_rules": get_applicable_shipping_rules(party)
 	}
 
@@ -71,9 +75,15 @@ def place_order():
 def update_cart(item_code, qty, with_items=False):
 	quotation = _get_cart_quotation()
 
+	empty_card = False
 	qty = flt(qty)
 	if qty == 0:
-		quotation.set("items", quotation.get("items", {"item_code": ["!=", item_code]}))
+		quotation_items = quotation.get("items", {"item_code": ["!=", item_code]})
+		if quotation_items:
+			quotation.set("items", quotation_items)
+		else:
+			empty_card = True
+
 	else:
 		quotation_items = quotation.get("items", {"item_code": item_code})
 		if not quotation_items:
@@ -88,7 +98,11 @@ def update_cart(item_code, qty, with_items=False):
 	apply_cart_settings(quotation=quotation)
 
 	quotation.flags.ignore_permissions = True
-	quotation.save()
+	if not empty_card:
+		quotation.save()
+	else:
+		quotation.delete()
+		quotation = None
 
 	set_cart_count(quotation)
 
@@ -311,7 +325,8 @@ def get_party(user=None):
 
 	else:
 		if not cart_settings.enabled:
-			return None
+			frappe.local.flags.redirect_location = "/contact"
+			raise frappe.Redirect
 		customer = frappe.new_doc("Customer")
 		fullname = get_fullname(user)
 		customer.update({

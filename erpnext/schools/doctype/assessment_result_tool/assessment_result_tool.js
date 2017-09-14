@@ -1,22 +1,27 @@
+
 // Copyright (c) 2016, Frappe Technologies Pvt. Ltd. and contributors
 // For license information, please see license.txt
 
 cur_frm.add_fetch("assessment_plan", "student_group", "student_group");
-cur_frm.add_fetch("assessment_plan", "student_batch", "student_batch");
 
 frappe.ui.form.on('Assessment Result Tool', {
-    refresh: function(frm) {
-       frm.disable_save();
-	   frm.page.clear_indicator();
-    },
+	refresh: function(frm) {
+		frm.trigger("assessment_plan");
+		if (frappe.route_options) {
+			frm.set_value("student_group", frappe.route_options.student_group);
+			frm.set_value("assessment_plan", frappe.route_options.assessment_plan);
+			frappe.route_options = null;
+		}
+		frm.disable_save();
+		frm.page.clear_indicator();
+	},
 
 	assessment_plan: function(frm) {
-		if(!(frm.doc.student_batch || frm.doc.student_group)) return;
+		if(!frm.doc.student_group) return;
 		frappe.call({
 			method: "erpnext.schools.api.get_assessment_students",
 			args: {
 				"assessment_plan": frm.doc.assessment_plan,
-				"student_batch": frm.doc.student_batch,
 				"student_group": frm.doc.student_group
 			},
 			callback: function(r) {
@@ -39,15 +44,15 @@ frappe.ui.form.on('Assessment Result Tool', {
 				assessment_plan: assessment_plan
 			},
 			callback: function(r) {
-				var criterias = r.message;
+				var criteria_list = r.message;
 				var max_total_score = 0;
-				criterias.forEach(function(c) {
+				criteria_list.forEach(function(c) {
 					max_total_score += c.maximum_score
 				});
 				var result_table = $(frappe.render_template('assessment_result_tool', {
 					frm: frm,
 					students: students,
-					criterias: criterias,
+					criteria: criteria_list,
 					max_total_score: max_total_score
 				}));
 				result_table.appendTo(frm.fields_dict.result_html.wrapper)
@@ -67,7 +72,8 @@ frappe.ui.form.on('Assessment Result Tool', {
 						value = max_score;
 					}
 					student_scores[student][criteria] = value;
-					if(Object.keys(student_scores[student]).length == criterias.length) {
+					if(Object.keys(student_scores[student]).length == criteria_list.length) {
+						console.log("ok");
 						frappe.call(({
 							method: "erpnext.schools.api.mark_assessment_result",
 							args: {
@@ -87,7 +93,7 @@ frappe.ui.form.on('Assessment Result Tool', {
 									var criteria = $input.data().criteria;
 									var value = $input.val();
 									var grade = details.find(function(d) {
-										return d.evaluation_criteria === criteria;
+										return d.assessment_criteria === criteria;
 									}).grade;
 									$input.val(`${value} (${grade})`);
 									$input.attr('disabled', true);

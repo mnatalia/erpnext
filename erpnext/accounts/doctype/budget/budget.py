@@ -22,6 +22,7 @@ class Budget(Document):
 			frappe.throw(_("{0} is mandatory").format(self.budget_against))
 		self.validate_duplicate()
 		self.validate_accounts()
+		self.set_null_value()
 
 	def validate_duplicate(self):
 		budget_against_field = frappe.scrub(self.budget_against)
@@ -54,29 +55,35 @@ class Budget(Document):
 				else:
 					account_list.append(d.account)
 
+	def set_null_value(self):
+		if self.budget_against == 'Cost Center':
+			self.project = None
+		else:
+			self.cost_center = None
+
 def validate_expense_against_budget(args):
 	args = frappe._dict(args)
 	if not args.cost_center and not args.project:
 		return
-	for budget_against in [args.project, args.cost_center]:
-		if budget_against \
+	for budget_against in ['project', 'cost_center']:
+		if args.get(budget_against) \
 				and frappe.db.get_value("Account", {"name": args.account, "root_type": "Expense"}):
 
-			if args.project:
+			if args.project and budget_against == 'project':
 				condition = "and b.project='%s'" % frappe.db.escape(args.project)
 				args.budget_against_field = "Project"
 			
-			elif args.cost_center:
+			elif args.cost_center and budget_against == 'cost_center':
 				cc_lft, cc_rgt = frappe.db.get_value("Cost Center", args.cost_center, ["lft", "rgt"])
 				condition = """and exists(select name from `tabCost Center` 
 					where lft<=%s and rgt>=%s and name=b.cost_center)""" % (cc_lft, cc_rgt)
 				args.budget_against_field = "Cost Center"
-			
-			args.budget_against = budget_against
+
+			args.budget_against = args.get(budget_against)
 
 			budget_records = frappe.db.sql("""
 				select
-					b.{budget_against_field}, ba.budget_amount, b.monthly_distribution,
+					b.{budget_against_field} as budget_against, ba.budget_amount, b.monthly_distribution,
 					b.action_if_annual_budget_exceeded, 
 					b.action_if_accumulated_monthly_budget_exceeded
 				from 
@@ -104,15 +111,15 @@ def validate_budget_records(args, budget_records):
 				args["month_end_date"] = get_last_day(args.posting_date)
 
 				compare_expense_with_budget(args, budget_amount, 
-					_("Accumulated Monthly"), monthly_action)
+					_("Accumulated Monthly"), monthly_action, budget.budget_against)
 
 			if yearly_action in ("Stop", "Warn") and monthly_action != "Stop" \
 				and yearly_action != monthly_action:
 				compare_expense_with_budget(args, flt(budget.budget_amount), 
-						_("Annual"), yearly_action)
+						_("Annual"), yearly_action, budget.budget_against)
 
 
-def compare_expense_with_budget(args, budget_amount, action_for, action):
+def compare_expense_with_budget(args, budget_amount, action_for, action, budget_against):
 	actual_expense = get_actual_expense(args)
 	if actual_expense > budget_amount:
 		diff = actual_expense - budget_amount
@@ -120,7 +127,7 @@ def compare_expense_with_budget(args, budget_amount, action_for, action):
 
 		msg = _("{0} Budget for Account {1} against {2} {3} is {4}. It will exceed by {5}").format(
 				_(action_for), frappe.bold(args.account), args.budget_against_field, 
-				frappe.bold(args.budget_against), 
+				frappe.bold(budget_against),
 				frappe.bold(fmt_money(budget_amount, currency=currency)), 
 				frappe.bold(fmt_money(diff, currency=currency)))
 

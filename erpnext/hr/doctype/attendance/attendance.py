@@ -35,8 +35,12 @@ class Attendance(Document):
 			frappe.throw(_("No leave record found for employee {0} for {1}").format(self.employee, self.attendance_date))
 
 	def validate_attendance_date(self):
+		date_of_joining = frappe.db.get_value("Employee", self.employee, "date_of_joining")
+
 		if getdate(self.attendance_date) > getdate(nowdate()):
 			frappe.throw(_("Attendance can not be marked for future dates"))
+		elif date_of_joining and getdate(self.attendance_date) < getdate(date_of_joining):
+			frappe.throw(_("Attendance date can not be less than employee's joining date"))
 
 	def validate_employee(self):
 		emp = frappe.db.sql("select name from `tabEmployee` where name = %s and status = 'Active'",

@@ -66,7 +66,7 @@ class Employee(Document):
 		user = frappe.get_doc("User", self.user_id)
 		user.flags.ignore_permissions = True
 
-		if "Employee" not in user.get("user_roles"):
+		if "Employee" not in user.get("roles"):
 			user.add_roles("Employee")
 
 		# copy details like Fullname, DOB and Image to User
@@ -157,7 +157,7 @@ class Employee(Document):
 		delete_events(self.doctype, self.name)
 
 	def validate_prefered_email(self):
-		if not self.get(scrub(self.prefered_contact_email)):
+		if self.prefered_contact_email and not self.get(scrub(self.prefered_contact_email)):
 			frappe.msgprint(_("Please enter " + self.prefered_contact_email))
 
 
@@ -186,14 +186,14 @@ def get_retirement_date(date_of_birth=None):
 
 def validate_employee_role(doc, method):
 	# called via User hook
-	if "Employee" in [d.role for d in doc.get("user_roles")]:
+	if "Employee" in [d.role for d in doc.get("roles")]:
 		if not frappe.db.get_value("Employee", {"user_id": doc.name}):
 			frappe.msgprint(_("Please set User ID field in an Employee record to set Employee Role"))
-			doc.get("user_roles").remove(doc.get("user_roles", {"role": "Employee"})[0])
+			doc.get("roles").remove(doc.get("roles", {"role": "Employee"})[0])
 
 def update_user_permissions(doc, method):
 	# called via User hook
-	if "Employee" in [d.role for d in doc.get("user_roles")]:
+	if "Employee" in [d.role for d in doc.get("roles")]:
 		employee = frappe.get_doc("Employee", {"user_id": doc.name})
 		employee.update_user_permissions()
 
@@ -289,3 +289,15 @@ def create_user(employee, user = None):
 	})
 	user.insert()
 	return user.name
+
+def get_employee_emails(employee_list):
+	'''Returns list of employee emails either based on user_id or company_email'''
+	employee_emails = []
+	for employee in employee_list:
+		if not employee:
+			continue
+		user, email = frappe.db.get_value('Employee', employee, ['user_id', 'company_email'])
+		if user or email:
+			employee_emails.append(user or email)
+
+	return employee_emails

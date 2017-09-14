@@ -29,6 +29,27 @@ frappe.ui.form.on("Salary Slip", {
 		})
 	},
 
+	start_date: function(frm){
+		if(frm.doc.start_date){
+			frm.trigger("set_end_date");
+		}
+	},
+
+	set_end_date: function(frm){
+		frappe.call({
+			method: 'erpnext.hr.doctype.process_payroll.process_payroll.get_end_date',
+			args: {
+				frequency: frm.doc.payroll_frequency,
+				start_date: frm.doc.start_date
+			},
+			callback: function (r) {
+				if (r.message) {
+					frm.set_value('end_date', r.message.end_date);
+				}
+			}
+		})
+	},
+
 	company: function(frm) {
 		var company = locals[':Company'][frm.doc.company];
 		if(!frm.doc.letter_head && company.default_letter_head) {
@@ -38,17 +59,24 @@ frappe.ui.form.on("Salary Slip", {
 
 	refresh: function(frm) {
 		frm.trigger("toggle_fields")
-		salary_detail_fields = ['formula', 'abbr']
+		frm.trigger("toggle_reqd_fields")
+		var salary_detail_fields = ['formula', 'abbr', 'statistical_component']
 		cur_frm.fields_dict['earnings'].grid.set_column_disp(salary_detail_fields,false);
 		cur_frm.fields_dict['deductions'].grid.set_column_disp(salary_detail_fields,false);
 	},	
 
 	salary_slip_based_on_timesheet: function(frm) {
-		frm.trigger("toggle_fields")
+		frm.trigger("toggle_fields");
+		frm.set_value('start_date', '');
 	},
 	
 	payroll_frequency: function(frm) {
-		frm.trigger("toggle_fields")
+		frm.trigger("toggle_fields");
+		frm.set_value('start_date', '');
+	},
+
+	employee: function(frm){
+		frm.set_value('start_date', '');
 	},
 
 	toggle_fields: function(frm) {
@@ -58,24 +86,34 @@ frappe.ui.form.on("Salary Slip", {
 		frm.toggle_display(['payment_days', 'total_working_days', 'leave_without_pay'],
 			frm.doc.payroll_frequency!="");
 	}
+	
 })
 
+frappe.ui.form.on('Salary Detail', {
+	earnings_remove: function(frm, dt, dn) {
+		calculate_all(frm.doc, dt, dn);
+	},
+	deductions_remove: function(frm, dt, dn) {
+		calculate_all(frm.doc, dt, dn);
+	}
+})
 
 // Get leave details
 //---------------------------------------------------------------------
 cur_frm.cscript.start_date = function(doc, dt, dn){
-	return frappe.call({
-		method: 'get_emp_and_leave_details',
-		doc: locals[dt][dn],
-		callback: function(r, rt) {
-			cur_frm.refresh();
-			calculate_all(doc, dt, dn);
-		}
-	});
+	if(!doc.start_date){
+		return frappe.call({
+			method: 'get_emp_and_leave_details',
+			doc: locals[dt][dn],
+			callback: function(r, rt) {
+				cur_frm.refresh();
+				calculate_all(doc, dt, dn);
+			}
+		});
+	}
 }
 
 cur_frm.cscript.payroll_frequency = cur_frm.cscript.salary_slip_based_on_timesheet = cur_frm.cscript.start_date;
-cur_frm.cscript.end_date = cur_frm.cscript.start_date;
 
 cur_frm.cscript.employee = function(doc,dt,dn){
 	doc.salary_structure = ''
@@ -110,6 +148,7 @@ cur_frm.cscript.depends_on_lwp = function(doc,dt,dn){
 	calculate_earning_total(doc, dt, dn, true);
 	calculate_ded_total(doc, dt, dn, true);
 	calculate_net_pay(doc, dt, dn);
+	refresh_many(['amount','gross_pay', 'rounded_total', 'net_pay', 'loan_repayment']);
 };
 
 // Calculate earning total
@@ -127,9 +166,8 @@ var calculate_earning_total = function(doc, dt, dn, reset_amount) {
 			refresh_field('amount', tbl[i].name, 'earnings');
 		}
 		total_earn += flt(tbl[i].amount);
-		
 	}
-	doc.gross_pay = total_earn + flt(doc.arrear_amount) + flt(doc.leave_encashment_amount);
+	doc.gross_pay = total_earn;
 	refresh_many(['amount','gross_pay']);
 }
 
@@ -159,17 +197,6 @@ var calculate_net_pay = function(doc, dt, dn) {
 	doc.rounded_total = Math.round(doc.net_pay);
 	refresh_many(['net_pay', 'rounded_total']);
 }
-
-// trigger on arrear
-// ------------------------------------------------------------------------
-cur_frm.cscript.arrear_amount = function(doc,dt,dn){
-	calculate_earning_total(doc, dt, dn);
-	calculate_net_pay(doc, dt, dn);
-}
-
-// trigger on encashed amount
-// ------------------------------------------------------------------------
-cur_frm.cscript.leave_encashment_amount = cur_frm.cscript.arrear_amount;
 
 // validate
 // ------------------------------------------------------------------------

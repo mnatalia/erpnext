@@ -2,13 +2,12 @@
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
-import frappe
+import frappe, erpnext
 from frappe import _, throw
 from frappe.utils import today, flt, cint, fmt_money, formatdate, getdate
-from erpnext.setup.utils import get_company_currency, get_exchange_rate
+from erpnext.setup.utils import get_exchange_rate
 from erpnext.accounts.utils import get_fiscal_years, validate_fiscal_year, get_account_currency
 from erpnext.utilities.transaction_base import TransactionBase
-from erpnext.controllers.recurring_document import convert_to_recurring, validate_recurring_document
 from erpnext.controllers.sales_and_purchase_return import validate_return
 from erpnext.accounts.party import get_party_account_currency, validate_party_frozen_disabled
 from erpnext.exceptions import InvalidCurrency
@@ -22,7 +21,7 @@ class AccountsController(TransactionBase):
 	@property
 	def company_currency(self):
 		if not hasattr(self, "__company_currency"):
-			self.__company_currency = get_company_currency(self.company)
+			self.__company_currency = erpnext.get_company_currency(self.company)
 
 		return self.__company_currency
 
@@ -53,13 +52,6 @@ class AccountsController(TransactionBase):
 		self.validate_party()
 		self.validate_currency()
 
-		if self.meta.get_field("is_recurring"):
-			if self.amended_from and self.recurring_id:
-				self.recurring_id = None
-			if not self.get("__islocal"):
-				validate_recurring_document(self)
-				convert_to_recurring(self, self.get("posting_date") or self.get("transaction_date"))
-
 		if self.doctype == 'Purchase Invoice':
 			self.validate_paid_amount()
 
@@ -83,11 +75,6 @@ class AccountsController(TransactionBase):
 						frappe.throw(_("Note: Payment Entry will not be created since 'Cash or Bank Account' was not specified"))
 			else:
 				frappe.db.set(self,'paid_amount',0)
-
-	def on_update_after_submit(self):
-		if self.meta.get_field("is_recurring"):
-			validate_recurring_document(self)
-			convert_to_recurring(self, self.get("posting_date") or self.get("transaction_date"))
 
 	def set_missing_values(self, for_validate=False):
 		if frappe.flags.in_test:
@@ -160,6 +147,7 @@ class AccountsController(TransactionBase):
 	def set_missing_item_details(self, for_validate=False):
 		"""set missing item values"""
 		from erpnext.stock.get_item_details import get_item_details
+		from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
 
 		if hasattr(self, "items"):
 			parent_dict = {}
@@ -186,14 +174,18 @@ class AccountsController(TransactionBase):
 
 					ret = get_item_details(args)
 
-
 					for fieldname, value in ret.items():
 						if item.meta.get_field(fieldname) and value is not None:
 							if (item.get(fieldname) is None or fieldname in force_item_fields):
 								item.set(fieldname, value)
 
-							elif fieldname == "cost_center" and not item.get("cost_center"):
+							elif fieldname in ['cost_center', 'conversion_factor'] and not item.get(fieldname):
 								item.set(fieldname, value)
+
+							elif fieldname == "serial_no":
+								stock_qty = item.get("stock_qty") * -1 if item.get("stock_qty") < 0 else item.get("stock_qty")
+								if stock_qty != len(get_serial_nos(item.get('serial_no'))):
+									item.set(fieldname, value)
 
 							elif fieldname == "conversion_factor" and not item.get("conversion_factor"):
 								item.set(fieldname, value)
@@ -270,7 +262,9 @@ class AccountsController(TransactionBase):
 		if not account_currency:
 			account_currency = get_account_currency(gl_dict.account)
 
-		if self.doctype not in ["Journal Entry", "Period Closing Voucher", "Payment Entry"]:
+		if gl_dict.account and self.doctype not in ["Journal Entry", 
+			"Period Closing Voucher", "Payment Entry"]:
+			
 			self.validate_account_currency(gl_dict.account, account_currency)
 			set_balance_in_account_currency(gl_dict, account_currency, self.get("conversion_rate"), self.company_currency)
 
@@ -426,7 +420,7 @@ class AccountsController(TransactionBase):
 					max_allowed_amt = flt(ref_amt * (100 + tolerance) / 100)
 
 					if total_billed_amt - max_allowed_amt > 0.01:
-						frappe.throw(_("Cannot overbill for Item {0} in row {1} more than {2}. To allow overbilling, please set in Stock Settings").format(item.item_code, item.idx, max_allowed_amt))
+						frappe.throw(_("Cannot overbill for Item {0} in row {1} more than {2}. To allow over-billing, please set in Buying Settings").format(item.item_code, item.idx, max_allowed_amt))
 
 	def get_company_default(self, fieldname):
 		from erpnext.accounts.utils import get_company_default

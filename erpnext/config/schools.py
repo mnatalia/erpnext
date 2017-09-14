@@ -20,16 +20,19 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Student Batch"
-				},
-				{
-					"type": "doctype",
 					"name": "Student Group"
 				},
 				{
 					"type": "doctype",
 					"name": "Student Group Creation Tool"
+				},
+				{
+					"type": "report",
+					"is_query_report": True,
+					"name": "Student and Guardian Contact Details",
+					"doctype": "Program Enrollment"
 				}
+
 			]
 		},
 		{
@@ -51,10 +54,6 @@ def get_data():
 				{
 					"type": "doctype",
 					"name": "Program Enrollment Tool"
-				},
-				{
-					"type": "doctype",
-					"name": "Student Batch Creation Tool"
 				}
 			]
 		},
@@ -99,7 +98,7 @@ def get_data():
 				{
 					"type": "doctype",
 					"name": "Course Schedule",
-					"route": "Calendar/Course Schedule"
+					"route": "List/Course Schedule/Calendar"
 				},
 				{
 					"type": "doctype",
@@ -116,7 +115,8 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Assessment Group"
+					"name": "Assessment Group",
+					"link": "Tree/Assessment Group",
 				},
 				{
 					"type": "doctype",
@@ -128,12 +128,23 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Evaluation Criteria"
+					"name": "Assessment Criteria"
+				},
+				{
+					"type": "doctype",
+					"name": "Assessment Criteria Group"
 				},
 				{
 					"type": "doctype",
 					"name": "Assessment Result Tool"
-				}
+				},
+				{
+					"type": "report",
+					"is_query_report": True,
+					"name": "Course wise Assessment Report",
+					"doctype": "Assessment Result"
+				},
+
 			]
 		},
 		{
@@ -156,23 +167,6 @@ def get_data():
 					"name": "Student Fee Collection",
 					"doctype": "Fees",
 					"is_query_report": True
-				}
-			]
-		},
-		{
-			"label": _("LMS"),
-			"items": [
-				{
-					"type": "doctype",
-					"name": "Announcement"
-				},
-				{
-					"type": "doctype",
-					"name": "Topic"
-				},
-				{
-					"type": "doctype",
-					"name": "Discussion"
 				}
 			]
 		},
@@ -210,6 +204,10 @@ def get_data():
 				{
 					"type": "doctype",
 					"name": "Academic Year"
+				},
+				{
+					"type": "doctype",
+					"name": "School Settings"
 				}
 			]
 		},

@@ -62,18 +62,21 @@ class BankReconciliation(Document):
 
 		for d in entries:
 			row = self.append('payment_entries', {})
-
-			d.amount = fmt_money(d.debit if d.debit else d.credit, 2, d.account_currency) + " " + (_("Dr") if d.debit else _("Cr"))
+			amount = d.debit if d.debit else d.credit
+			d.amount = fmt_money(amount, 2, d.account_currency) + " " + (_("Dr") if d.debit else _("Cr"))
 			d.pop("credit")
 			d.pop("debit")
 			d.pop("account_currency")
 			row.update(d)
-			self.total_amount += flt(d.amount)
+			self.total_amount += flt(amount)
 
 	def update_clearance_date(self):
 		clearance_date_updated = False
 		for d in self.get('payment_entries'):
 			if d.clearance_date:
+				if not d.payment_document:
+					frappe.throw(_("Row #{0}: Payment document is required to complete the trasaction"))
+
 				if d.cheque_date and getdate(d.clearance_date) < getdate(d.cheque_date):
 					frappe.throw(_("Row #{0}: Clearance date {1} cannot be before Cheque Date {2}")
 						.format(d.idx, d.clearance_date, d.cheque_date))

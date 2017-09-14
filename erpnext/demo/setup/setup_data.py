@@ -1,7 +1,8 @@
-from __future__ import unicode_literals
+from __future__ import print_function, unicode_literals
 
 import random, json
 import frappe, erpnext
+from frappe.utils.nestedset import get_root_of
 from frappe.utils import flt, now_datetime, cstr, random_string
 from frappe.utils.make_random import add_random_children, get_random
 from erpnext.demo.domains import data
@@ -14,6 +15,7 @@ def setup(domain):
 	setup_holiday_list()
 	setup_user()
 	setup_employee()
+	setup_user_roles()
 
 	employees = frappe.get_all('Employee',  fields=['name', 'date_of_joining'])
 
@@ -24,7 +26,6 @@ def setup(domain):
 	setup_salary_structure(employees[5:], 1)
 
 	setup_leave_allocation()
-	setup_user_roles()
 	setup_customer()
 	setup_supplier()
 	setup_warehouse()
@@ -41,14 +42,13 @@ def setup(domain):
 	frappe.clear_cache()
 
 def complete_setup(domain='Manufacturing'):
-	print "Complete Setup..."
+	print("Complete Setup...")
 	from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
 
 	if not frappe.get_all('Company', limit=1):
 		setup_complete({
-			"first_name": "Test",
-			"last_name": "User",
-			"email": "demo@erpnext.com",
+			"full_name": "Test User",
+			"email": "test_demo@erpnext.com",
 			"company_tagline": 'Awesome Products and Services',
 			"password": "demo",
 			"fy_start_date": "2015-01-01",
@@ -63,6 +63,13 @@ def complete_setup(domain='Manufacturing'):
 			"country": 'United States',
 			"language": "english"
 		})
+
+		company = erpnext.get_default_company()
+
+		if company:
+			company_doc = frappe.get_doc("Company", company)
+			company_doc.db_set('default_payroll_payable_account',
+				frappe.db.get_value('Account', dict(account_name='Payroll Payable')))
 
 def setup_demo_page():
 	# home page should always be "start"
@@ -110,7 +117,7 @@ def setup_user():
 	for u in json.loads(open(frappe.get_app_path('erpnext', 'demo', 'data', 'user.json')).read()):
 		user = frappe.new_doc("User")
 		user.update(u)
-		user.flags.no_welcome_mail
+		user.flags.no_welcome_mail = True
 		user.new_password = 'demo'
 		user.insert()
 
@@ -136,6 +143,7 @@ def setup_salary_structure(employees, salary_slip_based_on_timesheet=0):
 	for e in employees:
 		ss.append('employees', {
 			'employee': e.name,
+			'from_date': "2015-01-01",
 			'base': random.random() * 10000
 		})
 
@@ -176,7 +184,8 @@ def setup_user_roles():
 	user.add_roles('HR User', 'HR Manager', 'Accounts User', 'Accounts Manager',
 		'Stock User', 'Stock Manager', 'Sales User', 'Sales Manager', 'Purchase User',
 		'Purchase Manager', 'Projects User', 'Manufacturing User', 'Manufacturing Manager',
-		'Support Team', 'Academics User')
+		'Support Team', 'Academics User', 'Physician', 'Healthcare Administrator', 'Laboratory User',
+		'Nursing User', 'Patient')
 
 	if not frappe.db.get_global('demo_hr_user'):
 		user = frappe.get_doc('User', 'CharmaineGaudreau@example.com')
@@ -309,6 +318,8 @@ def setup_account():
 		doc.parent_account = frappe.db.get_value('Account', {'account_name': doc.parent_account})
 		doc.insert()
 
+	frappe.flags.in_import = False
+
 def setup_account_to_expense_type():
 	company_abbr = frappe.db.get_value("Company", erpnext.get_default_company(), "abbr")
 	expense_types = [{'name': _('Calls'), "account": "Sales Expenses - "+ company_abbr},
@@ -352,10 +363,13 @@ def setup_pos_profile():
 	pos.update_stock = 0
 	pos.write_off_account = 'Cost of Goods Sold - '+ company_abbr
 	pos.write_off_cost_center = 'Main - '+ company_abbr
+	pos.customer_group = get_root_of('Customer Group')
+	pos.territory = get_root_of('Territory')
 
 	pos.append('payments', {
 		'mode_of_payment': frappe.db.get_value('Mode of Payment', {'type': 'Cash'}, 'name'),
-		'amount': 0.0
+		'amount': 0.0,
+		'default': 1
 	})
 
 	pos.insert()
@@ -373,4 +387,4 @@ def import_json(doctype, submit=False, values=None):
 
 	frappe.db.commit()
 
-
+	frappe.flags.in_import = False
